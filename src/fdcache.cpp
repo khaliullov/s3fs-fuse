@@ -581,6 +581,7 @@ int FdEntity::Open(off_t size, time_t time)
 
   FPRNINFO("[path=%s][fd=%d][size=%jd][time=%jd]", path.c_str(), fd, (intmax_t)size, (intmax_t)time);
 
+  time_t old_time = 0;
   if(-1 != fd){
     // already opened, needs to increment refcnt.
     already_opened = true;
@@ -588,6 +589,13 @@ int FdEntity::Open(off_t size, time_t time)
   }else{
     // open
     if(0 != cachepath.size()){
+      struct stat st;
+      stat(cachepath.c_str(), &st);
+      old_time = st.st_mtime;
+      if (-1 != time && old_time > 0 && old_time != time) {
+        FPRNINFO("unlinking outdated file");
+        unlink(cachepath.c_str());
+      }
       // At first, open & flock stat file.
       {
         CacheFileStat cfstat(path.c_str());
@@ -668,7 +676,7 @@ int FdEntity::Open(off_t size, time_t time)
   }
 
   // set mtime
-  if(-1 != time){
+  if(-1 != time && (old_time == 0 || old_time > time)){
     if(0 != SetMtime(time)){
       DPRN("failed to set mtime. errno(%d)", errno);
       fclose(file);
@@ -691,7 +699,7 @@ int FdEntity::Open(off_t size, time_t time)
   return 0;
 }
 
-int FdEntity::SetMtime(time_t time)
+int FdEntity::SetMtime(time_t time, bool lock_file)
 {
   FPRNINFO("[path=%s][fd=%d][time=%jd]", path.c_str(), fd, (intmax_t)time);
 
@@ -699,7 +707,9 @@ int FdEntity::SetMtime(time_t time)
     return 0;
   }
   if(-1 != fd){
-    AutoLock auto_lock(&fdent_lock);
+    if (lock_file) {
+      AutoLock auto_lock(&fdent_lock);
+    }
 
     struct timeval tv[2];
     tv[0].tv_sec = time;
@@ -720,6 +730,7 @@ int FdEntity::SetMtime(time_t time)
       return -errno;
     }
   }
+  mtime = time;
   return 0;
 }
 
@@ -825,6 +836,7 @@ int FdEntity::Load(off_t start, off_t size)
       pagelist.SetInit((*iter)->offset, static_cast<off_t>((*iter)->bytes), true);
     }
     PageList::FreeList(uninit_list);
+    SetMtime(mtime, false);
   }
   return result;
 }

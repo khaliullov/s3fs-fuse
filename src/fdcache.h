@@ -98,6 +98,7 @@ class FdEntity
   private:
     pthread_mutex_t fdent_lock;
     bool            is_lock_init;
+    time_t          mtime;
     PageList        pagelist;
     int             refcnt;     // reference count
     std::string     path;       // object path
@@ -121,7 +122,7 @@ class FdEntity
     const char* GetPath(void) const { return path.c_str(); }
     void SetPath(const std::string &newpath) { path = newpath; }
     int GetFd(void) const { return fd; }
-    int SetMtime(time_t time);
+    int SetMtime(time_t time, bool lock_file = true);
     bool GetSize(off_t& size);
     bool GetMtime(time_t& time);
     bool GetStats(struct stat& st);
